@@ -1,0 +1,185 @@
+#!/usr/bin/env ruby
+
+require 'pp'
+
+class NodeList < Array
+  def [](key)
+    if key.instance_of? Symbol
+      first[key]
+    else
+      super
+    end
+  end
+
+  def value
+    self.first[:value]
+  end
+end
+
+class Node < Hash
+  def initialize
+    super { |hash, key| hash[key] = NodeList.new }
+  end
+end
+
+class MKVInfoParser
+  def initialize(output)
+    @output = output
+    @current = nil
+    @stack = []
+  end
+
+  def parsed
+    @current = Node.new
+    @stack = [@current]
+    @output.lines.each do |line|
+      process_line(line)
+    end
+    @stack.first
+  end
+
+  def process_line(line)
+    level, key, value = match_line(line)
+    update_current_level(key, level)
+    store_value(key, value)
+  end
+
+  def match_line(line)
+      match = /(.*\+ )([\w ]+)(?:: (.*))?/.match(line)
+      abort("#{line} does not match pattern") unless match
+
+      level = match[1].length
+      key = match[2].strip.downcase.gsub(/ +/, '_').to_sym
+      value = match[3] ? match[3].strip : nil
+      return level, key, value
+  end
+
+  def update_current_level(key, level)
+    c = Node.new
+
+    if level < @stack.length
+      @stack = @stack[0..level-2]
+    elsif level == @stack.length
+      @stack.pop
+      parent = @stack.last
+    end
+
+    @stack.last[key].push(c)
+    @stack.push(c)
+  end
+
+  def store_value(key, value)
+    @stack.last[:value] = value if value
+  end
+end
+
+class MKVCleanup
+  def initialize(filename)
+    @filename = filename
+  end
+
+  def clean
+    parsed = get_parsed_metadata
+    @tracks = parsed[:segment][:segment_tracks][:a_track]
+    find_track_names
+    confirm_rename
+  end
+
+  def get_parsed_metadata
+    output = `mkvinfo "#{@filename}"`
+    abort("Failed to run mkvinfo on file #{@filename}") if not result=$?.success?
+    MKVInfoParser.new(output).parsed
+  end
+
+  def find_track_names
+    @track_names = @tracks.map do |track|
+      find_track_name(track)
+    end
+  end
+
+  def find_track_name(track)
+    case track[:track_type].value
+    when 'subtitles' then subtitle_name(track)
+    when 'audio' then audio_name(track)
+    when 'video' then video_name(track)
+    else
+      abort("Unknown track type #{track[:track_type].value}")
+    end
+  end
+
+  def subtitle_name(track)
+    track_language(track)
+  end
+
+  def track_language(track)
+    return 'English' if not track.include? :language
+    case track[:language].value
+    when /eng|und/ then 'English'
+    when 'spa' then 'Spanish'
+    when 'swe' then 'Swedish'
+    when 'dut' then 'Dutch'
+    when 'fre' then 'French'
+    when 'ger' then 'German'
+    when 'fin' then 'Finnish'
+    when 'dan' then 'Danish'
+    when 'nor' then 'Norwegian'
+    when 'tur' then 'Turkish'
+    when 'ara' then 'Arabic'
+    when 'bul' then 'Bulgaric'
+    when 'chi' then 'Chinese'
+    when 'cze' then 'Czech'
+    when 'gre' then 'Greek'
+    when 'hrv' then 'Croatia'
+    when 'hun' then 'Hungaric'
+    when 'ind' then 'Indian'
+    when 'rum' then 'Rumanian'
+    when 'slv' then 'Slovenian'
+    else
+      abort("Unknown language #{track[:language].value}")
+    end
+  end
+
+  def audio_name(track)
+    language = track_language(track)
+    if track[:codec_id].value == 'A_DTS'
+      "#{language} DTS"
+    else
+      language
+    end
+  end
+
+  def video_name(track)
+    title
+  end
+
+  def confirm_rename
+    puts @filename
+    puts "Title => #{title}"
+    @track_names.each_with_index do |name, index|
+      puts "Track #{index} (#{@tracks[index][:track_type].value}) => #{name}"
+    end
+
+    if ARGV[1] != '--yes'
+      print "Is this correct? "
+      if not STDIN.readline.chomp.downcase == 'y'
+        abort("Aborting")
+      end
+    end
+
+    cmd = ['mkvpropedit']
+    cmd += ["--set", "title=#{title}"]
+    @track_names.each_with_index do |name, index|
+      cmd += ["--edit", "track:#{index+1}", "--set", "name=#{name}"]
+    end
+
+    cmd += [@filename]
+
+    system *cmd
+  end
+
+  def title
+    File.basename(@filename, '.*')
+  end
+end
+
+MKVCleanup.new(ARGV[0]).clean
