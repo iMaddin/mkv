@@ -13,4 +13,4 @@ Requirements
 
 Usage
 ---
-`ruby mkv <path/to/movie.mkv>`
+`ruby mkv <path/to/movie.mkv>` (now supports multiple files for batch cleanup)

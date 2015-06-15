@@ -134,6 +134,7 @@ class MKVCleanup
     when 'ind' then 'Indian'
     when 'rum' then 'Rumanian'
     when 'slv' then 'Slovenian'
+    when 'jpn' then "Japanese"
     else
       abort("Unknown language #{track[:language].value}")
     end
@@ -159,12 +160,12 @@ class MKVCleanup
       puts "Track #{index} (#{@tracks[index][:track_type].value}) => #{name}"
     end
 
-    if ARGV[1] != '--yes'
-      print "Is this correct? "
-      if not STDIN.readline.chomp.downcase == 'y'
-        abort("Aborting")
-      end
-    end
+    # if ARGV[1] != '--yes'
+    #   print "Is this correct? "
+    #   if not STDIN.readline.chomp.downcase == 'y'
+    #     abort("Aborting")
+    #   end
+    # end
 
     cmd = ['mkvpropedit']
     cmd += ["--set", "title=#{title}"]
@@ -182,4 +183,8 @@ class MKVCleanup
   end
 end
 
-MKVCleanup.new(ARGV[0]).clean
+# MKVCleanup.new(ARGV[0]).clean
+
+ARGV.each do |f|
+  MKVCleanup.new(f).clean
+end
